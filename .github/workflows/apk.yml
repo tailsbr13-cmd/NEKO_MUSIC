@@ -3,56 +3,77 @@ name: Criar APK
 on:
   workflow_dispatch:
 
-# Necessário para publicar o APK em "Lançamentos" (Releases)
+# Permissão necessária para publicar nas Releases
 permissions:
   contents: write
 
 jobs:
   build:
     runs-on: ubuntu-24.04
+
     steps:
-      - uses: actions/checkout@v4
+      # 1. Baixar o código do repositório
+      - name: Baixar repositório
+        uses: actions/checkout@v4
 
-      # Se o projeto foi enviado como .zip, extrai dentro do runner
-      - name: Extrair NekoMusic.zip (se existir)
-        run: if [ -f NekoMusic.zip ]; then unzip -oq NekoMusic.zip -d src; fi
-
-      - uses: actions/setup-java@v5
+      # 2. Configurar Java
+      - name: Configurar Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
+      # 3. Configurar Gradle
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Aceitar licenças do Android SDK
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-
+      # 4. Localizar o projeto Android
       - name: Localizar projeto
+        shell: bash
         run: |
-          ROOT=$(dirname "$(find . -maxdepth 4 -name settings.gradle.kts | head -n1)")
-          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
-          echo "Projeto em: $ROOT"
+          PROJECT_DIR=$(find . -type f -name gradlew \
+            -not -path '*/.gradle/*' \
+            -print -quit | xargs -r dirname)
 
-      # Testes do filtro do WhatsApp; se falharem, o APK ainda é gerado
-      - name: Testes unitários
-        continue-on-error: true
-        working-directory: ${{ env.ROOT }}
-        run: gradle testDebugUnitTest --stacktrace
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERRO: Gradle Wrapper não encontrado!"
+            exit 1
+          fi
 
-      - name: Compilar APK debug
-        working-directory: ${{ env.ROOT }}
-        run: gradle assembleDebug --stacktrace
+          echo "ROOT=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Projeto encontrado em: $PROJECT_DIR"
 
-      # Publica o APK direto em Lançamentos: baixa como .apk, sem .zip
+      # 5. Compilar APK
+      - name: Compilar APK
+        shell: bash
+        run: |
+          chmod +x "$ROOT/gradlew"
+          "$ROOT/gradlew" -p "$ROOT" assembleDebug --stacktrace
+
+      # 6. Publicar APK diretamente em Lançamentos
       - name: Publicar APK em Lançamentos
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          APK=$(find . -path '*build/outputs/apk/debug/*.apk' | head -n1)
+          set -e
+
+          APK=$(find "$ROOT" -type f \
+            -path '*/build/outputs/apk/debug/*.apk' \
+            -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "ERRO: Nenhum APK foi encontrado!"
+            exit 1
+          fi
+
+          echo "APK encontrado: $APK"
+
           cp "$APK" NekoMusic.apk
-          gh release create "build-${{ github.run_number }}" NekoMusic.apk \
-            --title "NEKO MUSIC build ${{ github.run_number }}" \
-            --notes "APK de instalação (debug). Baixe NekoMusic.apk e instale." \
+
+          TAG="build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+
+          gh release create "$TAG" NekoMusic.apk \
+            --title "NEKO MUSIC build ${GITHUB_RUN_NUMBER}" \
+            --notes "APK de instalação do NEKO MUSIC. Baixe NekoMusic.apk e instale no Android." \
             --latest
