@@ -1,4 +1,3 @@
-
 name: Criar APK
  
 on:
@@ -10,16 +9,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
  
-      # O projeto foi enviado como .zip: extrai dentro do runner antes de compilar
-      - name: Extrair NekoMusic.zip
-        run: unzip -oq NekoMusic.zip -d src
+      # Se o projeto foi enviado como .zip, extrai dentro do runner
+      - name: Extrair NekoMusic.zip (se existir)
+        run: if [ -f NekoMusic.zip ]; then unzip -oq NekoMusic.zip -d src; fi
  
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
  
-      # Instala o Gradle 8.9 (o projeto não traz o gradlew)
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
@@ -27,13 +25,21 @@ jobs:
       - name: Aceitar licenças do Android SDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
  
-      - name: Compilar APK debug
+      - name: Localizar projeto
         run: |
-          # Acha a pasta que contém o settings.gradle.kts (caso o projeto esteja numa subpasta)
           ROOT=$(dirname "$(find . -maxdepth 4 -name settings.gradle.kts | head -n1)")
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
           echo "Projeto em: $ROOT"
-          cd "$ROOT"
-          gradle assembleDebug --stacktrace
+ 
+      # Testes do filtro do WhatsApp; se falharem, o APK ainda é gerado
+      - name: Testes unitários
+        continue-on-error: true
+        working-directory: ${{ env.ROOT }}
+        run: gradle testDebugUnitTest --stacktrace
+ 
+      - name: Compilar APK debug
+        working-directory: ${{ env.ROOT }}
+        run: gradle assembleDebug --stacktrace
  
       - uses: actions/upload-artifact@v4
         with:
