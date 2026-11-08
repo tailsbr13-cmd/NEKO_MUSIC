@@ -1,50 +1,50 @@
 name: Criar APK
- 
+
 on:
   workflow_dispatch:
- 
+
 # Necessário para publicar o APK em "Lançamentos" (Releases)
 permissions:
   contents: write
- 
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
- 
+
       # Se o projeto foi enviado como .zip, extrai dentro do runner
       - name: Extrair NekoMusic.zip (se existir)
         run: if [ -f NekoMusic.zip ]; then unzip -oq NekoMusic.zip -d src; fi
- 
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
- 
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
- 
+
       - name: Aceitar licenças do Android SDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
- 
+
       - name: Localizar projeto
         run: |
           ROOT=$(dirname "$(find . -maxdepth 4 -name settings.gradle.kts | head -n1)")
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
           echo "Projeto em: $ROOT"
- 
+
       # Testes do filtro do WhatsApp; se falharem, o APK ainda é gerado
       - name: Testes unitários
         continue-on-error: true
         working-directory: ${{ env.ROOT }}
         run: gradle testDebugUnitTest --stacktrace
- 
+
       - name: Compilar APK debug
         working-directory: ${{ env.ROOT }}
         run: gradle assembleDebug --stacktrace
- 
+
       # Publica o APK direto em Lançamentos: baixa como .apk, sem .zip
       - name: Publicar APK em Lançamentos
         env:
