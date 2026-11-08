@@ -1,4 +1,3 @@
-· YML
 name: Criar APK
  
 on:
@@ -57,5 +56,3 @@ jobs:
             --title "NEKO MUSIC build ${{ github.run_number }}" \
             --notes "APK de instalação (debug). Baixe NekoMusic.apk e instale." \
             --latest
- 
- 
