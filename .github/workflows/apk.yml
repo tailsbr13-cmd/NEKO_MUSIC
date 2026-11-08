@@ -1,36 +1,42 @@
-name: Criar APK
 
+name: Criar APK
+ 
 on:
   workflow_dispatch:
-
+ 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
+ 
+      # O projeto foi enviado como .zip: extrai dentro do runner antes de compilar
+      - name: Extrair NekoMusic.zip
+        run: unzip -oq NekoMusic.zip -d src
+ 
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-
+ 
       # Instala o Gradle 8.9 (o projeto não traz o gradlew)
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-
+ 
       - name: Aceitar licenças do Android SDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-
+ 
       - name: Compilar APK debug
         run: |
           # Acha a pasta que contém o settings.gradle.kts (caso o projeto esteja numa subpasta)
-          ROOT=$(dirname "$(find . -maxdepth 3 -name settings.gradle.kts | head -n1)")
+          ROOT=$(dirname "$(find . -maxdepth 4 -name settings.gradle.kts | head -n1)")
           echo "Projeto em: $ROOT"
           cd "$ROOT"
           gradle assembleDebug --stacktrace
-
+ 
       - uses: actions/upload-artifact@v4
         with:
           name: NekoMusic-debug-apk
           path: "**/build/outputs/apk/debug/*.apk"
+ 
