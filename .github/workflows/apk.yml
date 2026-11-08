@@ -1,9 +1,10 @@
+
 name: Criar APK
 
 on:
   workflow_dispatch:
 
-# Permissão necessária para publicar nas Releases
+# Permissão para publicar em Releases
 permissions:
   contents: write
 
@@ -12,68 +13,83 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      # 1. Baixar o código do repositório
-      - name: Baixar repositório
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 2. Configurar Java
-      - name: Configurar Java
-        uses: actions/setup-java@v4
+      # Extrair projeto, caso tenha sido enviado em ZIP
+      - name: Extrair NekoMusic.zip (se existir)
+        run: |
+          if [ -f NekoMusic.zip ]; then
+            unzip -oq NekoMusic.zip -d src
+          fi
+
+      # Configurar Java
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      # 3. Configurar Gradle
-      - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
+      # Configurar Gradle
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
 
-      # 4. Localizar o projeto Android
-      - name: Localizar projeto
-        shell: bash
+      # Aceitar licenças Android SDK
+      - name: Aceitar licenças do Android SDK
         run: |
-          PROJECT_DIR=$(find . -type f -name gradlew \
-            -not -path '*/.gradle/*' \
-            -print -quit | xargs -r dirname)
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERRO: Gradle Wrapper não encontrado!"
+      # Localizar projeto
+      - name: Localizar projeto
+        run: |
+          ROOT=$(dirname "$(find . -maxdepth 4 -name settings.gradle.kts | head -n1)")
+
+          if [ ! -f "$ROOT/settings.gradle.kts" ]; then
+            echo "ERRO: Projeto Android não encontrado!"
             exit 1
           fi
 
-          echo "ROOT=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projeto encontrado em: $PROJECT_DIR"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Projeto em: $ROOT"
 
-      # 5. Compilar APK
-      - name: Compilar APK
-        shell: bash
+      # Executar testes
+      - name: Testes unitários
+        continue-on-error: true
+        working-directory: ${{ env.ROOT }}
+        run: gradle testDebugUnitTest --stacktrace
+
+      # Gerar APK
+      - name: Compilar APK debug
+        working-directory: ${{ env.ROOT }}
+        run: gradle assembleDebug --stacktrace
+
+      # Localizar e preparar APK
+      - name: Preparar APK
         run: |
-          chmod +x "$ROOT/gradlew"
-          "$ROOT/gradlew" -p "$ROOT" assembleDebug --stacktrace
-
-      # 6. Publicar APK diretamente em Lançamentos
-      - name: Publicar APK em Lançamentos
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -e
-
-          APK=$(find "$ROOT" -type f \
-            -path '*/build/outputs/apk/debug/*.apk' \
-            -print -quit)
+          APK=$(find "$ROOT" -path '*/build/outputs/apk/debug/*.apk' -print -quit)
 
           if [ -z "$APK" ]; then
-            echo "ERRO: Nenhum APK foi encontrado!"
+            echo "ERRO: APK não encontrado!"
             exit 1
           fi
-
-          echo "APK encontrado: $APK"
 
           cp "$APK" NekoMusic.apk
 
-          TAG="build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          echo "APK gerado com sucesso!"
 
-          gh release create "$TAG" NekoMusic.apk \
-            --title "NEKO MUSIC build ${GITHUB_RUN_NUMBER}" \
+      # Disponibilizar APK como artefato, igual ao YGO
+      - name: Disponibilizar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEKO-MUSIC-APK
+          path: NekoMusic.apk
+          if-no-files-found: error
+
+      # Publicar APK diretamente em Releases
+      - name: Publicar APK em Lançamentos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}-${{ github.run_attempt }}" NekoMusic.apk \
+            --title "NEKO MUSIC build ${{ github.run_number }}" \
             --notes "APK de instalação do NEKO MUSIC. Baixe NekoMusic.apk e instale no Android." \
             --latest
