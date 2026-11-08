@@ -1,7 +1,12 @@
+· YML
 name: Criar APK
  
 on:
   workflow_dispatch:
+ 
+# Necessário para publicar o APK em "Lançamentos" (Releases)
+permissions:
+  contents: write
  
 jobs:
   build:
@@ -41,8 +46,16 @@ jobs:
         working-directory: ${{ env.ROOT }}
         run: gradle assembleDebug --stacktrace
  
-      - uses: actions/upload-artifact@v4
-        with:
-          name: NekoMusic-debug-apk
-          path: "**/build/outputs/apk/debug/*.apk"
+      # Publica o APK direto em Lançamentos: baixa como .apk, sem .zip
+      - name: Publicar APK em Lançamentos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(find . -path '*build/outputs/apk/debug/*.apk' | head -n1)
+          cp "$APK" NekoMusic.apk
+          gh release create "build-${{ github.run_number }}" NekoMusic.apk \
+            --title "NEKO MUSIC build ${{ github.run_number }}" \
+            --notes "APK de instalação (debug). Baixe NekoMusic.apk e instale." \
+            --latest
+ 
  
